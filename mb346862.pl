@@ -35,7 +35,7 @@ readProgram(program(V, A, I)) :-
 %     [Pid1-C1, ..., PidN-CN]
 
 
- %%%%%%%%%%%%%%%%%%%%%%%%%%%% Inicjalizacja stanu %%%%%%%%%%%%%%%%%%%%%%%%%%%%
+ %%%%%%%%%%%%%%%%%%%%%%%%%%%% Inicjalizacja stanu %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
 % createConstList(+N, +Val, -List), jeśli List jest
@@ -71,4 +71,42 @@ initState(N, program(Vars, Arrs, _), state(VarVals, ArrVals, CVals)) :-
 
 
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%  %%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Ewaluacja wyrażeń %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% evalSimple(+SimpleExp, +State, -Num), jeśli SimpleExp jest wyrażeniem prostym,
+% Num jego wartością, a State stanem wykonania programu.
+evalSimple(Num, _, Num) :-	% wyrażenie proste to liczba
+	integer(Num).
+evalSimple(Var, state(VarVals, _, _), Num) :-	% wyrażenie proste to zmienna
+	atom(Var),
+	memberchk(Var-Num, VarVals).								% odczytujemy wartość zmiennej
+evalSimple(arr(Arr, Exp), State, Num) :-			% wyrażenie proste to tablica
+	evalExp(Exp, State, Index),									% obliczamy indeks tablicy
+	State = state(_, ArrVals, _),
+	memberchk(Arr-Vals, ArrVals),								% odczytujemy wartości tablicy
+	nth0(Index, Vals, Num).											% odczytujemy szukaną wartość
+
+% evalExp(+Exp, +State, -Num), jesli wartość wyrażenia
+% Exp w stanie State to Num
+evalExp(Exp, State, Num) :-
+	evalSimple(Exp, State, Num).		% sprawdzamy czy Exp jest wyrażeniem prostym
+evalExp(Exp, State, Num) :-
+	Exp =.. [Oper, E1, E2],					% sprawdzamy czy Exp jest wyrażeniem złożonym
+	Oper \= arr,										% ... ale nie tablicą
+	evalSimple(E1, State, N1),			% obliczamy podwyrażenia
+	evalSimple(E2, State, N2),
+	NumExp =.. [Oper, N1, N2],			% konstruujemy obliczalne wyrażenie...
+	Num is NumExp.									% i obliczamy je
+
+% evalBoolExp(+BoolExp, +State, -Bool), jesli wartość wyrażenia logicznego
+% BoolExp w stanie State to Bool, gdzie Bool to stała true lub false.
+evalBoolExp(BExp, State, Bool) :-
+	BExp =.. [Oper, E1, E2],				% BExp jest wyrażeniem złożonym
+	evalSimple(E1, State, N1),			% obliczamy podwyrażenia
+	evalSimple(E2, State, N2),
+	NBExp =.. [Oper, N1, N2],				% konstruujemy wyrażenie logiczne
+	( NBExp
+	-> Bool = true
+	; Bool = false).
+% TODO handle <>
+
+
