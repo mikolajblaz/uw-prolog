@@ -194,16 +194,26 @@ incrementCounter(CVals, Pid, NewCVals) :-
 %%%%%%%%%%%%%%%%%%%%%%%%% Sprawdzanie bezpieczeństwa %%%%%%%%%%%%%%%%%%%%%%%%%%
 verify(N, Program) :-
 	initState(N, Program, InitState),
-	
-% isSafe(P, S, Checked), jeśli stan S jest na liście Checked
-% oraz stan S jest bezpieczny
-isSafe(Program, State, CheckedStates) :-
-	checkSafety(Program, State),					% sprawdź czy 2 procesy nie są w sekcji
-	step(Program, State, Pid, NextState), % wybierz następny stan
-	memberchk(NextState, CheckedStates).	% jeśli był już odwiedzony, nie sprawdzaj
 
-isSafe(Program, State, SafeStates) :-
-	checkSafety(Program, State),
-	step(Program, State, Pid, NextState),
-	\+memberchk(NextState, CheckedStates),
-	isSafe(Program, NextState, [NextState | CheckedStates]).
+% isUnsafe(+Program, +State), jeśli stan State
+% programu Program nie jest bezpieczny
+isUnsafe(Program, State, [State], Sections) :-
+	getProgramSections(Program, Sections).
+	
+% isUnsafe(+Program, +State, +CheckedStates), jeśli stan State
+% programu Program nie jest bezpieczny, a lista CheckedState jest listą
+% odwiedzonych stanów (a jej pierwszy element to stan State)
+isUnsafe(_, State, _, Sections) :-
+	% sprawdź czy 2 procesy nie są w sekcji
+	checkSectionsUnsafety(Sections, State).
+
+isUnsafe(Program, State, CheckedStates, _) :-
+	step(Program, State, _, NextState),			% wybierz dowolny następny stan...
+	\+memberchk(NextState, CheckedStates),	% ... jeśli nie był odwiedzony
+	% sprawdź bezpiecześntwo w nowym stanie, po dodaniu go do listy odwiedzonych:
+	isUnsafe(Program, NextState, [NextState | CheckedStates]).
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Sekcja krytyczna %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+getProgramSections(program(_, _, Instrs), Sections).
+checkSectionsUnsafety(Sections, state(_, _, CVals)).
