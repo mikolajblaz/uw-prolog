@@ -191,4 +191,19 @@ incrementCounter(CVals, Pid, NewCVals) :-
 	selectchk(Pid-_, CVals, Pid-NewCounter, NewCVals).
 
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%% Sprawdzanie bezpieczeństwa %%%%%%%%%%%%%%%%%%%%%%%%%%
+verify(N, Program) :-
+	initState(N, Program, InitState),
+	
+% isSafe(P, S, Checked), jeśli stan S jest na liście Checked
+% oraz stan S jest bezpieczny
+isSafe(Program, State, CheckedStates) :-
+	checkSafety(Program, State),					% sprawdź czy 2 procesy nie są w sekcji
+	step(Program, State, Pid, NextState), % wybierz następny stan
+	memberchk(NextState, CheckedStates).	% jeśli był już odwiedzony, nie sprawdzaj
+
+isSafe(Program, State, SafeStates) :-
+	checkSafety(Program, State),
+	step(Program, State, Pid, NextState),
+	\+memberchk(NextState, CheckedStates),
+	isSafe(Program, NextState, [NextState | CheckedStates]).
