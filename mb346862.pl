@@ -77,37 +77,40 @@ initState(N, program(Vars, Arrs, _), state(VarVals, ArrVals, CVals)) :-
 :- op(500, yfx, <>).
 '<>'(A, B) :- A =\= B.
 
-% evalSimple(+SimpleExp, +State, -Num), jeśli SimpleExp jest wyrażeniem prostym,
-% Num jego wartością, a State stanem wykonania programu.
-evalSimple(Num, _, Num) :-	% wyrażenie proste to liczba
+% evalSimple(+SimpleExp, +State, +Pid, -Num), jeśli SimpleExp jest
+% wyrażeniem prostym, Num jego wartością w stanie wykonania programu State,
+% o ile bieżący proces to Pid.
+evalSimple(Num, _, _, Num) :-				% wyrażenie proste to liczba
 	integer(Num).
-evalSimple(Var, state(VarVals, _, _), Num) :-	% wyrażenie proste to zmienna
+evalSimple(pid, _, Pid, Pid).				% stała pid
+evalSimple(Var, state(VarVals, _, _), _, Num) :-	% wyrażenie proste to zmienna
 	atom(Var),
 	memberchk(Var-Num, VarVals).								% odczytujemy wartość zmiennej
-evalSimple(arr(Arr, Exp), State, Num) :-			% wyrażenie proste to tablica
+evalSimple(arr(Arr, Exp), State, _, Num) :-		% wyrażenie proste to tablica
 	evalExp(Exp, State, Index),									% obliczamy indeks tablicy
 	State = state(_, ArrVals, _),
 	memberchk(Arr-Vals, ArrVals),								% odczytujemy wartości tablicy
 	nth0(Index, Vals, Num).											% odczytujemy szukaną wartość
 
-% evalExp(+Exp, +State, -Num), jesli wartość wyrażenia
-% Exp w stanie State to Num
-evalExp(Exp, State, Num) :-
-	evalSimple(Exp, State, Num).		% sprawdzamy czy Exp jest wyrażeniem prostym
-evalExp(Exp, State, Num) :-
-	Exp =.. [Oper, E1, E2],					% sprawdzamy czy Exp jest wyrażeniem złożonym
+% evalExp(+Exp, +State, +Pid, -Num), jesli wartość wyrażenia Exp
+% obliczanego przez proces Pid w stanie State to Num
+evalExp(Exp, State, Pid, Num) :-
+	evalSimple(Exp, State, Pid, Num).		% jeśli Exp jest wyrażeniem prostym
+evalExp(Exp, State, Pid, Num) :-
+	Exp =.. [Oper, E1, E2],					% jeśli Exp jest wyrażeniem złożonym...
 	Oper \= arr,										% ... ale nie tablicą
-	evalSimple(E1, State, N1),			% obliczamy podwyrażenia
-	evalSimple(E2, State, N2),
+	evalSimple(E1, State, Pid, N1),	% obliczamy podwyrażenia
+	evalSimple(E2, State, Pid, N2),
 	NumExp =.. [Oper, N1, N2],			% konstruujemy obliczalne wyrażenie...
 	Num is NumExp.									% i obliczamy je
 
-% evalBoolExp(+BoolExp, +State, -Bool), jesli wartość wyrażenia logicznego
-% BoolExp w stanie State to Bool, gdzie Bool to stała true lub false.
-evalBoolExp(BExp, State, Bool) :-
+% evalBoolExp(+BoolExp, +State, +Pid, -Bool), jesli wartość wyrażenia
+% logicznego BoolExp w stanie State obliczanego przez proces Pid to Bool,
+% gdzie Bool to stała true lub false.
+evalBoolExp(BExp, State, Pid, Bool) :-
 	BExp =.. [Oper, E1, E2],				% BExp jest wyrażeniem złożonym
-	evalSimple(E1, State, N1),			% obliczamy podwyrażenia
-	evalSimple(E2, State, N2),
+	evalSimple(E1, State, Pid, N1),	% obliczamy podwyrażenia
+	evalSimple(E2, State, Pid, N2),
 	NBExp =.. [Oper, N1, N2],				% konstruujemy wyrażenie logiczne
 	( NBExp
 	-> Bool = true
@@ -132,7 +135,7 @@ stepInstr(assign(Var, Exp), InState, Pid, OutState) :-	% przypisanie
 	atom(Var),
 	InState = state(VarVals, ArrVals, CVals),
 
-	evalExp(Exp, InState, Num),
+	evalExp(Exp, InState, Pid, Num),
 	% przypisz obliczoną wartość Num do zmiennej Var:
 	selectchk(Var-_, VarVals, Var-Num, NewVarVals),
 	
@@ -143,8 +146,8 @@ stepInstr(assign(Var, Exp), InState, Pid, OutState) :-	% przypisanie
 stepInstr(assign(arr(Var, IndexExp), Exp), InState, Pid, OutState) :-
 	InState = state(VarVals, ArrVals, CVals),
 
-	evalExp(Exp, InState, Num),
-	evalExp(IndexExp, InState, Index),						% oblicz wartość wyrażeń
+	evalExp(Exp, InState, Pid, Num),
+	evalExp(IndexExp, InState, Pid, Index),				% oblicz wartość wyrażeń
 
 	memberchk(Var-Arr, ArrVals),									% Arr to wartości tablicy
 	replace0(Index, Arr, Num, NewArr),						% wstaw Num pod indeksem Index
@@ -164,7 +167,7 @@ stepInstr(goto(Num), InState, Pid, OutState) :-	% skok
 stepInstr(condGoto(BoolExp, Num), InState, Pid, OutState) :- % warunkowy skok
 	InState = state(VarVals, ArrVals, CVals),
 
-	evalBoolExp(BoolExp, InState, Bool),
+	evalBoolExp(BoolExp, InState, Pid, Bool),
 	(Bool = true
 	-> selectchk(Pid-_, CVals, Pid-Num, NewCVals)		% zadana instrukcja
 	; incrementCounter(CVals, Pid, NewCVals)),			% następna instrukcja
