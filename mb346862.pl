@@ -120,13 +120,13 @@ evalBoolExp(BExp, State, Bool) :-
 % proces Pid bieżącej instrukcji programu Program w stanie InState,
 % stan wynikowy to OutState.
 step(program(_, _, Instrs), InState, Pid, OutState) :-
-	InState = state(_, _, CVals)
-	memberchk(Pid-Counter, CVals),	% wartość licznika instrukcji procesu Pid
+	InState = state(_, _, CVals),
+	member(Pid-Counter, CVals),	% wartość licznika instrukcji procesu Pid
 	nth1(Counter, Instrs, Instr),		% wykonywana instrukcja
 	stepInstr(Instr, InState, Pid, OutState).
 
 
-% stepInstr(+Instr, +InState, ?Pid, -OutState), jeśli po wykonaniu przez
+% stepInstr(+Instr, +InState, +Pid, -OutState), jeśli po wykonaniu przez
 % proces Pid instrukcji Instr w stanie InState stan wynikowy to OutState.
 stepInstr(assign(Var, Exp), InState, Pid, OutState) :-	% przypisanie
 	atom(Var),
@@ -179,11 +179,11 @@ stepInstr(sekcja, InState, Pid, OutState) :- 		% sekcja krytyczna
 
 
 
-% incrementCounter(CVals, Pid, NewCVals), jeśli w tablicy
+% incrementCounter(+CVals, +Pid, -NewCVals), jeśli w tablicy
 % liczników instrukcji CVals, licznik odpowiadający procesowi Pid
 % jest zwiększony o 1 w tablicy NewCVals.
 incrementCounter(CVals, Pid, NewCVals) :-
-	memberchk(Pid-Counter, CVals),
+	member(Pid-Counter, CVals),
 	NewCounter is Counter+1,
 	selectchk(Pid-_, CVals, Pid-NewCounter, NewCVals).
 
