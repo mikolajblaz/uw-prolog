@@ -72,6 +72,11 @@ initState(N, program(Vars, Arrs, _), state(VarVals, ArrVals, CVals)) :-
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Ewaluacja wyrażeń %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Definiujemy własny operator logiczny '<>' o znaczeniu takim jak '=\='.
+% Pozostałe operatory logiczne: '=' oraz '<' mają znaczenie jak w Prologu
+:- op(500, yfx, <>).
+'<>'(A, B) :- A =\= B.
+
 % evalSimple(+SimpleExp, +State, -Num), jeśli SimpleExp jest wyrażeniem prostym,
 % Num jego wartością, a State stanem wykonania programu.
 evalSimple(Num, _, Num) :-	% wyrażenie proste to liczba
@@ -107,6 +112,5 @@ evalBoolExp(BExp, State, Bool) :-
 	( NBExp
 	-> Bool = true
 	; Bool = false).
-% TODO handle <>
 
 
