@@ -72,8 +72,8 @@ initState(N, program(Vars, Arrs, _), state(VarVals, ArrVals, CVals)) :-
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Ewaluacja wyrażeń %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Definiujemy własny operator logiczny '<>' o znaczeniu takim jak '=\='.
-% Pozostałe operatory logiczne: '=' oraz '<' mają znaczenie jak w Prologu
+% Definiujemy własny operator relacyjny '<>' o znaczeniu takim jak '=\='.
+% Pozostałe operatory relacyjne: '=' oraz '<' mają znaczenie jak w Prologu
 :- op(500, yfx, <>).
 '<>'(A, B) :- A =\= B.
 
@@ -114,3 +114,78 @@ evalBoolExp(BExp, State, Bool) :-
 	; Bool = false).
 
 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%% Wykonanie instrukcji %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% step(+Program, +InState, ?Pid, -OutState), jeśli po wykonaniu przez
+% proces Pid bieżącej instrukcji programu Program w stanie InState,
+% stan wynikowy to OutState.
+step(program(_, _, Instrs), InState, Pid, OutState) :-
+	InState = state(_, _, CVals)
+	memberchk(Pid-Counter, CVals),	% wartość licznika instrukcji procesu Pid
+	nth1(Counter, Instrs, Instr),		% wykonywana instrukcja
+	stepInstr(Instr, InState, Pid, OutState).
+
+
+% stepInstr(+Instr, +InState, ?Pid, -OutState), jeśli po wykonaniu przez
+% proces Pid instrukcji Instr w stanie InState stan wynikowy to OutState.
+stepInstr(assign(Var, Exp), InState, Pid, OutState) :-	% przypisanie
+	atom(Var),
+	InState = state(VarVals, ArrVals, CVals),
+
+	evalExp(Exp, InState, Num),
+	% przypisz obliczoną wartość Num do zmiennej Var:
+	selectchk(Var-_, VarVals, Var-Num, NewVarVals),
+	
+	incrementCounter(CVals, Pid, NewCVals),				% bezwarunkowo zwiększ licznik
+	OutState = state(NewVarVals, ArrVals, NewCVals).	% stan końcowy
+
+
+stepInstr(assign(arr(Var, IndexExp), Exp), InState, Pid, OutState) :-
+	InState = state(VarVals, ArrVals, CVals),
+
+	evalExp(Exp, InState, Num),
+	evalExp(IndexExp, InState, Index),						% oblicz wartość wyrażeń
+
+	memberchk(Var-Arr, ArrVals),									% Arr to wartości tablicy
+	replace0(Index, Arr, Num, NewArr),						% wstaw Num pod indeksem Index
+	% przypisz zmienioną tablicę z powrotem do zmiennej Var:
+	selectchk(Var-_, ArrVals, Var-NewArr, NewArrVals),
+	
+	incrementCounter(CVals, Pid, NewCVals),				% bezwarunkowo zwiększ licznik
+	OutState = state(VarVals, NewArrVals, NewCVals).	% stan końcowy
+
+
+stepInstr(goto(Num), InState, Pid, OutState) :-	% skok
+	InState = state(VarVals, ArrVals, CVals),
+	selectchk(Pid-_, CVals, Pid-Num, NewCVals),		% zmień wartość licznika na Num
+	OutState = state(VarVals, ArrVals, NewCVals).
+
+
+stepInstr(condGoto(BoolExp, Num), InState, Pid, OutState) :- % warunkowy skok
+	InState = state(VarVals, ArrVals, CVals),
+
+	evalBoolExp(BoolExp, InState, Bool),
+	(Bool = true
+	-> selectchk(Pid-_, CVals, Pid-Num, NewCVals)		% zadana instrukcja
+	; incrementCounter(CVals, Pid, NewCVals)),			% następna instrukcja
+
+	OutState = state(VarVals, ArrVals, NewCVals).
+
+
+stepInstr(sekcja, InState, Pid, OutState) :- 		% sekcja krytyczna
+	InState = state(VarVals, ArrVals, CVals),
+	incrementCounter(CVals, Pid, NewCVals),				% po prostu następna instrukcja
+	OutState = state(VarVals, ArrVals, NewCVals).
+
+
+
+% incrementCounter(CVals, Pid, NewCVals), jeśli w tablicy
+% liczników instrukcji CVals, licznik odpowiadający procesowi Pid
+% jest zwiększony o 1 w tablicy NewCVals.
+incrementCounter(CVals, Pid, NewCVals) :-
+	memberchk(Pid-Counter, CVals),
+	NewCounter is Counter+1,
+	selectchk(Pid-_, CVals, Pid-NewCounter, NewCVals).
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
