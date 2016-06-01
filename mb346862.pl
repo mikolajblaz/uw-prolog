@@ -86,8 +86,8 @@ evalSimple(pid, _, Pid, Pid).				% stała pid
 evalSimple(Var, state(VarVals, _, _), _, Num) :-	% wyrażenie proste to zmienna
 	atom(Var),
 	memberchk(Var-Num, VarVals).								% odczytujemy wartość zmiennej
-evalSimple(arr(Arr, Exp), State, _, Num) :-		% wyrażenie proste to tablica
-	evalExp(Exp, State, Index),									% obliczamy indeks tablicy
+evalSimple(arr(Arr, Exp), State, Pid, Num) :-	% wyrażenie proste to tablica
+	evalExp(Exp, State, Pid, Index),						% obliczamy indeks tablicy
 	State = state(_, ArrVals, _),
 	memberchk(Arr-Vals, ArrVals),								% odczytujemy wartości tablicy
 	nth0(Index, Vals, Num).											% odczytujemy szukaną wartość
@@ -191,33 +191,6 @@ incrementCounter(CVals, Pid, NewCVals) :-
 	selectchk(Pid-_, CVals, Pid-NewCounter, NewCVals).
 
 
-%%%%%%%%%%%%%%%%%%%%%%%%% Sprawdzanie bezpieczeństwa %%%%%%%%%%%%%%%%%%%%%%%%%%
-verify(N, Program) :-
-	initState(N, Program, InitState),
-	isUnsafe(Program, InitState).
-
-% isUnsafe(+Program, +State), jeśli stan State
-% programu Program nie jest bezpieczny
-isUnsafe(Program, State) :-
-	getProgramSections(Program, Sections),
-	isUnsafe(Program, State, [State], Sections).
-	
-% isUnsafe(+Program, +State, +CheckedStates, +Sections), jeśli stan State
-% programu Program nie jest bezpieczny, lista CheckedState jest listą
-% odwiedzonych stanów (a jej pierwszy element to stan State),
-% a Sections jest listą numerów instrukcji 'sekcja' w programie.
-isUnsafe(_, state(_, _, CVals), _, Sections) :-
-	% sprawdź czy 2 procesy nie są w sekcji
-	twoInSection(Sections, CVals),
-	print('Niebezpiecznie!'),
-	print(CVals).
-
-isUnsafe(Program, State, CheckedStates, Sections) :-
-	step(Program, State, _, NextState),			% wybierz dowolny następny stan...
-	\+memberchk(NextState, CheckedStates),	% ... jeśli nie był odwiedzony
-	% sprawdź bezpiecześntwo w nowym stanie, po dodaniu go do listy odwiedzonych:
-	isUnsafe(Program, NextState, [NextState | CheckedStates], Sections).
-
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Sekcja krytyczna %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % getProgramSections(+Program, +Sections), jeśli Sections jest listą
@@ -236,7 +209,7 @@ getProgramSections([I | Instrs], Tail, N) :-
 	I \= sekcja,
 	M is N+1,
 	getProgramSections(Instrs, Tail, M).
-	
+
 
 % twoInSection(+Sections, +CVals), jeśli co najmniej dwa procesy
 % mogą wejść do którejś sekcji krytycznej z listy Sections,
@@ -256,3 +229,48 @@ anyInSection(Sections, [_-C | _]) :-
 anyInSection(Sections, [_-C | CVals]) :-
 	\+memberchk(C, Sections),
 	anyInSection(Sections, CVals).
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%% Sprawdzanie bezpieczeństwa %%%%%%%%%%%%%%%%%%%%%%%%%%
+verify(N, Program) :-
+	initState(N, Program, InitState),
+	isSafe(N, Program, InitState, CheckedStates),
+	print('SAFE'),
+	print(CheckedStates).
+
+% isUnsafe(+N, +Program, +State, -CheckedStates), jeśli stan State
+% programu Program dla N procesów nie jest bezpieczny
+isSafe(N, Program, State, CheckedStates) :-
+	getProgramSections(Program, Sections),
+	isSafe(N, Program, 0, State, [State], Sections, CheckedStates).
+	
+% isUnsafe(+N, +Program, +Pid,     +State, +CheckedStates, +Sections, +NewCheckedStates), jeśli stan State
+% programu Program dla N procesów nie jest bezpieczny, lista CheckedState jest
+% listą odwiedzonych stanów (a jej pierwszy element to stan State),
+% a Sections jest listą numerów instrukcji 'sekcja' w programie.
+isSafe(N, _, N, _, CheckedStates, _, CheckedStates).
+isSafe(N, _, Pid, state(_, _, CVals), CheckedStates, Sections, CheckedStates) :-
+	Pid < N,
+	% sprawdź czy 2 procesy nie są w sekcji
+	twoInSection(Sections, CVals),
+	print('Niebezpiecznie!'),
+	print(CVals),
+	!,
+	fail.
+
+isSafe(N, Program, Pid, State, CheckedStates, Sections, FinalCheckedStates) :-
+	Pid < N,
+	NextPid is Pid+1,
+
+	step(Program, State, Pid, NextState),			% wybierz następny stan
+	(memberchk(NextState, CheckedStates)
+	% jeśli był odwiedzony, przejrzyj następnych sąsiadów)
+	-> isSafe(N, Program, NextPid, State, CheckedStates, Sections, FinalCheckedStates)
+	% jesli nie
+	% sprawdź bezpiecześntwo w nowym stanie, po dodaniu go do listy odwiedzonych:
+	; isSafe(N, Program, 0, NextState, [NextState | CheckedStates], Sections, SubtreeCheckedStates),
+	% po przejrzeniu stanów potomnych, wywołaj się dla bieżącego stanu, ale następnego procesu.
+	isSafe(N, Program, NextPid, State, SubtreeCheckedStates, Sections, FinalCheckedStates)).
+
+
