@@ -194,26 +194,65 @@ incrementCounter(CVals, Pid, NewCVals) :-
 %%%%%%%%%%%%%%%%%%%%%%%%% Sprawdzanie bezpieczeństwa %%%%%%%%%%%%%%%%%%%%%%%%%%
 verify(N, Program) :-
 	initState(N, Program, InitState),
+	isUnsafe(Program, InitState).
 
 % isUnsafe(+Program, +State), jeśli stan State
 % programu Program nie jest bezpieczny
-isUnsafe(Program, State, [State], Sections) :-
-	getProgramSections(Program, Sections).
+isUnsafe(Program, State) :-
+	getProgramSections(Program, Sections),
+	isUnsafe(Program, State, [State], Sections).
 	
-% isUnsafe(+Program, +State, +CheckedStates), jeśli stan State
-% programu Program nie jest bezpieczny, a lista CheckedState jest listą
-% odwiedzonych stanów (a jej pierwszy element to stan State)
-isUnsafe(_, State, _, Sections) :-
+% isUnsafe(+Program, +State, +CheckedStates, +Sections), jeśli stan State
+% programu Program nie jest bezpieczny, lista CheckedState jest listą
+% odwiedzonych stanów (a jej pierwszy element to stan State),
+% a Sections jest listą numerów instrukcji 'sekcja' w programie.
+isUnsafe(_, state(_, _, CVals), _, Sections) :-
 	% sprawdź czy 2 procesy nie są w sekcji
-	checkSectionsUnsafety(Sections, State).
+	twoInSection(Sections, CVals),
+	print('Niebezpiecznie!'),
+	print(CVals).
 
-isUnsafe(Program, State, CheckedStates, _) :-
+isUnsafe(Program, State, CheckedStates, Sections) :-
 	step(Program, State, _, NextState),			% wybierz dowolny następny stan...
 	\+memberchk(NextState, CheckedStates),	% ... jeśli nie był odwiedzony
 	% sprawdź bezpiecześntwo w nowym stanie, po dodaniu go do listy odwiedzonych:
-	isUnsafe(Program, NextState, [NextState | CheckedStates]).
+	isUnsafe(Program, NextState, [NextState | CheckedStates], Sections).
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Sekcja krytyczna %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-getProgramSections(program(_, _, Instrs), Sections).
-checkSectionsUnsafety(Sections, state(_, _, CVals)).
+% getProgramSections(+Program, +Sections), jeśli Sections jest listą
+% numerów instrukcji 'sekcja' w programie Program.
+getProgramSections(program(_, _, Instrs), Sections) :-
+	getProgramSections(Instrs, Sections, 1).
+
+% getProgramSections(+Instrs, +Sections, +N), jeśli Sections jest listą
+% numerów instrukcji 'sekcja' w liście instrukcji Instrs,
+% gdzie numerowanie instrukcji zaczyna się od N.
+getProgramSections([], [], _).
+getProgramSections([sekcja | Instrs], [N | Tail], N) :-
+	M is N+1,
+	getProgramSections(Instrs, Tail, M).
+getProgramSections([I | Instrs], Tail, N) :-
+	I \= sekcja,
+	M is N+1,
+	getProgramSections(Instrs, Tail, M).
+	
+
+% twoInSection(+Sections, +CVals), jeśli co najmniej dwa procesy
+% mogą wejść do którejś sekcji krytycznej z listy Sections,
+% czyli co najmniej 2 liczniki z listy CVals są numerami instrukcji 'sekcja'.
+twoInSection(_, []) :- fail. 		% jeśli nie ma procesów, to bezpiecznie
+twoInSection(Sections, [_-C | CVals]) :-
+	% jeśli C to 'sekcja', to sprawdź czy jest jeszcze 1 proces w sekcji
+	(memberchk(C, Sections)
+	-> anyInSection(Sections, CVals)
+	; twoInSection(Sections, CVals)).
+
+% anyInSection(+Sections, +CVals), jeśli co najmniej jeden proces
+% może wejść do którejś sekcji krytycznej z listy Sections.
+anyInSection(_, []) :- fail.
+anyInSection(Sections, [_-C | _]) :-
+	memberchk(C, Sections).
+anyInSection(Sections, [_-C | CVals]) :-
+	\+memberchk(C, Sections),
+	anyInSection(Sections, CVals).
