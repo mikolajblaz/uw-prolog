@@ -250,27 +250,26 @@ isSafe(N, Program, State, CheckedStates) :-
 % listą odwiedzonych stanów (a jej pierwszy element to stan State),
 % a Sections jest listą numerów instrukcji 'sekcja' w programie.
 isSafe(N, _, N, _, CheckedStates, _, CheckedStates).
-isSafe(N, _, Pid, state(_, _, CVals), CheckedStates, Sections, CheckedStates) :-
-	Pid < N,
-	% sprawdź czy 2 procesy nie są w sekcji
-	twoInSection(Sections, CVals),
-	print('Niebezpiecznie!'),
-	print(CVals),
-	!,
-	fail.
+
 
 isSafe(N, Program, Pid, State, CheckedStates, Sections, FinalCheckedStates) :-
 	Pid < N,
-	NextPid is Pid+1,
+	State = state(_, _, CVals),
+	(twoInSection(Sections, CVals)
+	-> print('Niebezpiecznie!'),
+		print(CVals),
+		fail
+	;	NextPid is Pid+1,
 
-	step(Program, State, Pid, NextState),			% wybierz następny stan
-	(memberchk(NextState, CheckedStates)
-	% jeśli był odwiedzony, przejrzyj następnych sąsiadów)
-	-> isSafe(N, Program, NextPid, State, CheckedStates, Sections, FinalCheckedStates)
-	% jesli nie
-	% sprawdź bezpiecześntwo w nowym stanie, po dodaniu go do listy odwiedzonych:
-	; isSafe(N, Program, 0, NextState, [NextState | CheckedStates], Sections, SubtreeCheckedStates),
-	% po przejrzeniu stanów potomnych, wywołaj się dla bieżącego stanu, ale następnego procesu.
-	isSafe(N, Program, NextPid, State, SubtreeCheckedStates, Sections, FinalCheckedStates)).
+		step(Program, State, Pid, NextState),			% wybierz następny stan
+		(memberchk(NextState, CheckedStates)
+		% jeśli był odwiedzony, przejrzyj następnych sąsiadów)
+		-> isSafe(N, Program, NextPid, State, CheckedStates, Sections, FinalCheckedStates)
+		% jesli nie
+		% sprawdź bezpiecześntwo w nowym stanie, po dodaniu go do listy odwiedzonych:
+		; isSafe(N, Program, 0, NextState, [NextState | CheckedStates], Sections, SubtreeCheckedStates),
+		% po przejrzeniu stanów potomnych, wywołaj się dla bieżącego stanu, ale następnego procesu.
+		isSafe(N, Program, NextPid, State, SubtreeCheckedStates, Sections, FinalCheckedStates))
+	).
 
 
