@@ -19,9 +19,6 @@ vrb(V) :- vars(VS), member(V, VS).
 arr(A) :- arrays(AS), member(A, AS).
 instr(I, Instr) :- program(P), nth1(I, P, Instr).
 
-readProgram(program(V, A, I)) :-
-	vars(V), arrays(A), program(I).
-
 
 % Stan wykonania programu jest reprezentowany jako term
 %   state(VariableValues, ArrayValues, CounterValues)
@@ -233,11 +230,14 @@ anyInSection(Sections, [_-C | CVals]) :-
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%% Sprawdzanie bezpieczeństwa %%%%%%%%%%%%%%%%%%%%%%%%%%
-verify(N, Program) :-
-	initState(N, Program, InitState),
-	isSafe(N, Program, InitState, CheckedStates),
-	print('SAFE'),
-	print(CheckedStates).
+verify(N, ProgramFile) :-
+	(readProgram(ProgramFile, Program)	% wczytaj program z pliku
+	-> initState(N, Program, InitState),		% inicjuj stan
+	isSafe(N, Program, InitState, CheckedStates),		% sprawdź bezpieczeństwo
+	format('Program jest poprawny (bezpieczny).')
+	;
+	format('Error: niepoprawna nazwa pliku - ~p.~n', [ProgramFile])
+).
 
 % isUnsafe(+N, +Program, +State, -CheckedStates), jeśli stan State
 % programu Program dla N procesów nie jest bezpieczny
@@ -273,3 +273,12 @@ isSafe(N, Program, Pid, State, CheckedStates, Sections, FinalCheckedStates) :-
 	).
 
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Wczytanie programu %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+readProgram(ProgramFile, program(Vars, Arrays, Instrs)) :-
+	set_prolog_flag(fileerrors, off),
+	see(ProgramFile),
+	!,
+	read(vars(Vars)),
+	read(arrays(Arrays)),
+	read(program(Instrs)),
+	seen.
