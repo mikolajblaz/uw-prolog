@@ -211,7 +211,6 @@ getProgramSections([I | Instrs], Tail, N) :-
 % twoInSection(+Sections, +CVals), jeśli co najmniej dwa procesy
 % mogą wejść do którejś sekcji krytycznej z listy Sections,
 % czyli co najmniej 2 liczniki z listy CVals są numerami instrukcji 'sekcja'.
-twoInSection(_, []) :- fail. 		% jeśli nie ma procesów, to bezpiecznie
 twoInSection(Sections, [_-C | CVals]) :-
 	% jeśli C to 'sekcja', to sprawdź czy jest jeszcze 1 proces w sekcji
 	(memberchk(C, Sections)
@@ -220,9 +219,8 @@ twoInSection(Sections, [_-C | CVals]) :-
 
 % anyInSection(+Sections, +CVals), jeśli co najmniej jeden proces
 % może wejść do którejś sekcji krytycznej z listy Sections.
-anyInSection(_, []) :- fail.
 anyInSection(Sections, [_-C | _]) :-
-	memberchk(C, Sections).
+	memberchk(C, Sections), !.
 anyInSection(Sections, [_-C | CVals]) :-
 	\+memberchk(C, Sections),
 	anyInSection(Sections, CVals).
