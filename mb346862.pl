@@ -81,6 +81,7 @@ evalSimple(Num, _, _, Num) :-				% wyrażenie proste to liczba
 	integer(Num).
 evalSimple(pid, _, Pid, Pid).				% stała pid
 evalSimple(Var, state(VarVals, _, _), _, Num) :-	% wyrażenie proste to zmienna
+	Var \= pid,
 	atom(Var),
 	memberchk(Var-Num, VarVals).								% odczytujemy wartość zmiennej
 evalSimple(arr(Arr, Exp), State, Pid, Num) :-	% wyrażenie proste to tablica
@@ -121,7 +122,7 @@ evalBoolExp(BExp, State, Pid, Bool) :-
 % stan wynikowy to OutState.
 step(program(_, _, Instrs), InState, Pid, OutState) :-
 	InState = state(_, _, CVals),
-	member(Pid-Counter, CVals),	% wartość licznika instrukcji procesu Pid
+	memberchk(Pid-Counter, CVals),	% wartość licznika instrukcji procesu Pid
 	nth1(Counter, Instrs, Instr),		% wykonywana instrukcja
 	stepInstr(Instr, InState, Pid, OutState).
 
@@ -183,7 +184,7 @@ stepInstr(sekcja, InState, Pid, OutState) :- 		% sekcja krytyczna
 % liczników instrukcji CVals, licznik odpowiadający procesowi Pid
 % jest zwiększony o 1 w tablicy NewCVals.
 incrementCounter(CVals, Pid, NewCVals) :-
-	member(Pid-Counter, CVals),
+	memberchk(Pid-Counter, CVals),
 	NewCounter is Counter+1,
 	selectchk(Pid-_, CVals, Pid-NewCounter, NewCVals).
 
@@ -268,7 +269,7 @@ isSafe(N, Program, Pid, State, ChkStates, Sections, NewChkStates, Safety) :-
 			(SubtreeSafety = safe
 			-> isSafe(N, Program, NextPid, State, SubtreeChkStates, Sections, NewChkStates, Safety))
 			; Safety = unsafe)
-	,!).
+	).
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%% Wczytanie programu %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
