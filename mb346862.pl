@@ -6,18 +6,13 @@
 
 ?- ensure_loaded(library(lists)).
 
+% Pomocnicze predykaty
 
 % replace0(+N, +List, +Elem, -NewList), jeśli NewList to lista List
 % z N-tym elementem zamienionym na Elem (indeksowanie od 0)
 replace0(N, L, E, NewL) :-
 	nth0(N, L, _, Rest),			% usuwamy N-ty element
 	nth0(N, NewL, E, Rest).		% wstawiamy Elem jako N-ty element
-
-
-% Pomocnicze predykaty
-vrb(V) :- vars(VS), member(V, VS).
-arr(A) :- arrays(AS), member(A, AS).
-instr(I, Instr) :- program(P), nth1(I, P, Instr).
 
 
 % Stan wykonania programu jest reprezentowany jako term
@@ -37,14 +32,14 @@ instr(I, Instr) :- program(P), nth1(I, P, Instr).
 
 % createConstList(+N, +Val, -List), jeśli List jest
 % N-elementową listą elementów Val
-createConstList(0, _, []).
+createConstList(0, _, []) :- !.
 createConstList(N, Val, [Val|Tail]) :-
 	N > 0,
 	M is N-1,
 	createConstList(M, Val, Tail).
 
 % createAscendingList(+M, +N, -List), jeśli List jest listą [M, ..., N-1]
-createAscendingList(N, N, []).
+createAscendingList(N, N, []) :- !.
 createAscendingList(M, N, [M|Tail]) :-
 	M < N,
 	M1 is M+1,
@@ -52,7 +47,7 @@ createAscendingList(M, N, [M|Tail]) :-
 
 % initConstKeys(+Keys, +Val, -List), jeśli Keys jest listą [K1, ..., Kn],
 % zaś List jest listą [K1-Val, ..., Kn-Val]
-initConstKeys([], _, []).
+initConstKeys([], _, []) :- !.
 initConstKeys([K|KS], Val, [K-Val|Tail]) :-
 	initConstKeys(KS, Val, Tail).
 
@@ -78,11 +73,13 @@ initState(N, program(Vars, Arrs, _), state(VarVals, ArrVals, CVals)) :-
 % wyrażeniem prostym, Num jego wartością w stanie wykonania programu State,
 % o ile bieżący proces to Pid.
 evalSimple(Num, _, _, Num) :-				% wyrażenie proste to liczba
-	integer(Num).
-evalSimple(pid, _, Pid, Pid).				% stała pid
+	integer(Num),
+	!.
+evalSimple(pid, _, Pid, Pid) :- !.	% stała pid
 evalSimple(Var, state(VarVals, _, _), _, Num) :-	% wyrażenie proste to zmienna
 	Var \= pid,
 	atom(Var),
+	!,
 	memberchk(Var-Num, VarVals).								% odczytujemy wartość zmiennej
 evalSimple(arr(Arr, Exp), State, Pid, Num) :-	% wyrażenie proste to tablica
 	evalExp(Exp, State, Pid, Index),						% obliczamy indeks tablicy
@@ -93,7 +90,7 @@ evalSimple(arr(Arr, Exp), State, Pid, Num) :-	% wyrażenie proste to tablica
 % evalExp(+Exp, +State, +Pid, -Num), jesli wartość wyrażenia Exp
 % obliczanego przez proces Pid w stanie State to Num
 evalExp(Exp, State, Pid, Num) :-
-	evalSimple(Exp, State, Pid, Num).		% jeśli Exp jest wyrażeniem prostym
+	evalSimple(Exp, State, Pid, Num), !.	% jeśli Exp jest wyrażeniem prostym
 evalExp(Exp, State, Pid, Num) :-
 	Exp =.. [Oper, E1, E2],					% jeśli Exp jest wyrażeniem złożonym...
 	Oper \= arr,										% ... ale nie tablicą
@@ -131,6 +128,7 @@ step(program(_, _, Instrs), InState, Pid, OutState) :-
 % proces Pid instrukcji Instr w stanie InState stan wynikowy to OutState.
 stepInstr(assign(Var, Exp), InState, Pid, OutState) :-	% przypisanie
 	atom(Var),
+	!,
 	InState = state(VarVals, ArrVals, CVals),
 
 	evalExp(Exp, InState, Pid, Num),
@@ -199,8 +197,9 @@ getProgramSections(program(_, _, Instrs), Sections) :-
 % getProgramSections(+Instrs, +Sections, +N), jeśli Sections jest listą
 % numerów instrukcji 'sekcja' w liście instrukcji Instrs,
 % gdzie numerowanie instrukcji zaczyna się od N.
-getProgramSections([], [], _).
+getProgramSections([], [], _) :- !.
 getProgramSections([sekcja | Instrs], [N | Tail], N) :-
+	!,
 	M is N+1,
 	getProgramSections(Instrs, Tail, M).
 getProgramSections([I | Instrs], Tail, N) :-
@@ -248,7 +247,7 @@ isSafe(N, Program, State, CheckedStates, Safety) :-
 % programu Program dla N procesów nie jest bezpieczny, lista CheckedState jest
 % listą odwiedzonych stanów (a jej pierwszy element to stan State),
 % a Sections jest listą numerów instrukcji 'sekcja' w programie.
-isSafe(N, _, N, _, CheckedStates, _, CheckedStates, safe).
+isSafe(N, _, N, _, CheckedStates, _, CheckedStates, safe) :- !.
 
 
 isSafe(N, Program, Pid, State, ChkStates, Sections, NewChkStates, Safety) :-
@@ -267,8 +266,9 @@ isSafe(N, Program, Pid, State, ChkStates, Sections, NewChkStates, Safety) :-
 		; isSafe(N, Program, 0, NextState, [NextState | ChkStates], Sections, SubtreeChkStates, SubtreeSafety),
 		% po przejrzeniu stanów potomnych, wywołaj się dla bieżącego stanu, ale następnego procesu.
 			(SubtreeSafety = safe
-			-> isSafe(N, Program, NextPid, State, SubtreeChkStates, Sections, NewChkStates, Safety))
+			-> isSafe(N, Program, NextPid, State, SubtreeChkStates, Sections, NewChkStates, Safety)
 			; Safety = unsafe)
+		)
 	).
 
 
