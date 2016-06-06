@@ -228,42 +228,62 @@ anyInSection(Sections, [_-C | CVals], PrInSec) :-
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%% Sprawdzanie bezpieczeństwa %%%%%%%%%%%%%%%%%%%%%%%%%%
+% Bezpieczeństwo sprawdzamy przeszukiwując graf stanów wgłąb.
+% Jeśli stan jest bezpieczny, oznaczamy to termem 'safe'.
+% Jeśli stan jest niebezpieczny, oznaczamy to termem
+% 'unsafe(InSec, InstrList)', gdzie InSec to lista dwóch procesów w sekcji
+% krytycznej, a InstrList to lista elementów Proces-Instrukcja, które
+% w przeszukanym poddrzewie doprowadziły do niebezpiecznego stanu.
+
 % checkSafety(+N, +Program, +State, -Safety), jeśli stan State
-% programu Program dla N procesów nie jest bezpieczny
+% programu Program dla N procesów jest bezpieczny i Safety=safe
+% lub stan State nie jest bezpieczny oraz Safety=unsafe(...) j.w.
 checkSafety(N, Program, State, Safety) :-
 	getProgramSections(Program, Sections),
 	checkSafety(N, Program, 0, State, [State], Sections, _, Safety).
-	
-% checkSafety(+N, +Program, +Pid,     +State, +CheckedStates, +Sections, +NewCheckedStates), jeśli stan State
-% programu Program dla N procesów nie jest bezpieczny, lista CheckedState jest
-% listą odwiedzonych stanów (a jej pierwszy element to stan State),
-% a Sections jest listą numerów instrukcji 'sekcja' w programie.
+
+
+% checkSafety(+N, +Program, +Pid, +State, +CheckedStates, +Sections,
+% 						-NewCheckedStates, -Safety),
+% jeśli Safety odwierciedla bezpieczeństwo stanu State programu Program
+% dla N procesów. Lista CheckedState jest listą odwiedzonych stanów
+% (a jej pierwszy element to stan State).
+% NewChkStates jest listą stanów odwiedzonych w przeszukanym poddrzewie.
+
 checkSafety(N, _, N, _, CheckedStates, _, CheckedStates, safe) :- !.
 
-
-checkSafety(N, Program, Pid, State, ChkStates, Sections, NewChkStates, Safety) :-
+checkSafety(N, Program, Pid, State, ChkStates, Sects, NewChkStates, Safety) :-
 	Pid < N,
 	State = state(_, _, CVals),
-	(twoInSection(Sections, CVals, InSec)
-	-> Safety = unsafe(InSec, []),
+	( twoInSection(Sects, CVals, InSec)
+	-> % jeśli dwa procesy w sekcji, to stan niebezpieczny
+		Safety = unsafe(InSec, []),
 		NewChkStates = ChkStates
-	;	NextPid is Pid+1,
 
-		step(Program, State, Pid, NextState),			% wybierz następny stan
-		(memberchk(NextState, ChkStates)
-		% jeśli był odwiedzony, przejrzyj następnych sąsiadów)
-		-> checkSafety(N, Program, NextPid, State, ChkStates, Sections, NewChkStates, Safety)
-		% jesli nie
-		% sprawdź bezpiecześntwo w nowym stanie, po dodaniu go do listy odwiedzonych:
-		; checkSafety(N, Program, 0, NextState, [NextState | ChkStates], Sections, SubtreeChkStates, SubtreeSafety),
-		% po przejrzeniu stanów potomnych, wywołaj się dla bieżącego stanu, ale następnego procesu.
+	; % w przeciwnym razie szukamy dalej
+	  NextPid is Pid+1,
+		% wykonaj jeden krok
+		step(Program, State, Pid, NextState),
+		
+		( memberchk(NextState, ChkStates)
+		-> % jeśli następny stan był odwiedzony, sprawdź bezpieczeństwo sąsiadów
+			checkSafety(N, Program, NextPid, State, ChkStates,
+			 					  Sects, NewChkStates, Safety)
+		; % jesli nie, to sprawdź bezpiecześntwo w nowym stanie,
+			% po dodaniu go do listy odwiedzonych:
+		  checkSafety(N, Program, 0, NextState, [NextState | ChkStates],
+									Sects, SubtreeChkStates, SubtreeSafety),
 
+			% jeśli poddrzewo było bezpieczne, wywołaj się dla sąsiadów
+			% jeśli nie, zwróć niebezpieczny stan
 			(SubtreeSafety = safe
-			-> checkSafety(N, Program, NextPid, State, SubtreeChkStates, Sections, NewChkStates, Safety)
-			; SubtreeSafety = unsafe(InSec, PidList),
-				memberchk(Pid-C, CVals),
-				Safety = unsafe(InSec, [Pid-C | PidList]),
-				NewChkStates = SubtreeChkStates)
+			-> checkSafety(N, Program, NextPid, State, SubtreeChkStates,
+										 Sects, NewChkStates, Safety)
+			; SubtreeSafety = unsafe(InSec, InstrList),
+				memberchk(Pid-C, CVals),		% sprawdź numer wykonywanej instrukcji
+				Safety = unsafe(InSec, [Pid-C | InstrList]),
+				NewChkStates = SubtreeChkStates
+			)
 		)
 	).
 
