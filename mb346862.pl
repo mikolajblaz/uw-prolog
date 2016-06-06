@@ -208,69 +208,80 @@ getProgramSections([I | Instrs], Tail, N) :-
 	getProgramSections(Instrs, Tail, M).
 
 
-% twoInSection(+Sections, +CVals), jeśli co najmniej dwa procesy
-% mogą wejść do którejś sekcji krytycznej z listy Sections,
-% czyli co najmniej 2 liczniki z listy CVals są numerami instrukcji 'sekcja'.
-twoInSection(Sections, [_-C | CVals]) :-
+% twoInSection(+Sections, +CVals, -[Pr1, Pr2]), jeśli Pr1, Pr2 to najmniejsze
+% dwóch procesów, które mogą wejść do którejś sekcji krytycznej z listy
+% Sections, czyli ich liczniki z listy CVals są numerami instrukcji 'sekcja'.
+twoInSection(Sections, [PrId-C | CVals], [PrId1, PrId2]) :-
 	% jeśli C to 'sekcja', to sprawdź czy jest jeszcze 1 proces w sekcji
 	(memberchk(C, Sections)
-	-> anyInSection(Sections, CVals)
-	; twoInSection(Sections, CVals)).
+	-> PrId = PrId1, anyInSection(Sections, CVals, PrId2)
+	; twoInSection(Sections, CVals, [PrId1, PrId2])).
 
-% anyInSection(+Sections, +CVals), jeśli co najmniej jeden proces
+% anyInSection(+Sections, +CVals, -PrInSec), jeśli proces PrInSec
 % może wejść do którejś sekcji krytycznej z listy Sections.
-anyInSection(Sections, [_-C | _]) :-
+anyInSection(Sections, [PrId-C | _], PrId) :-
 	memberchk(C, Sections), !.
-anyInSection(Sections, [_-C | CVals]) :-
+anyInSection(Sections, [_-C | CVals], PrInSec) :-
 	\+memberchk(C, Sections),
-	anyInSection(Sections, CVals).
+	anyInSection(Sections, CVals, PrInSec).
 
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%% Sprawdzanie bezpieczeństwa %%%%%%%%%%%%%%%%%%%%%%%%%%
-verify(N, ProgramFile) :-
-	(readProgram(ProgramFile, Program)	% wczytaj program z pliku
-	-> initState(N, Program, InitState),		% inicjuj stan
-		isSafe(N, Program, InitState, _, Safety),		% sprawdź bezpieczeństwo
-		printResult(Safety)
-	;	format('Error: niepoprawna nazwa pliku - ~p.~n', [ProgramFile])).
-
-% isUnsafe(+N, +Program, +State, -CheckedStates), jeśli stan State
+% checkSafety(+N, +Program, +State, -Safety), jeśli stan State
 % programu Program dla N procesów nie jest bezpieczny
-isSafe(N, Program, State, CheckedStates, Safety) :-
+checkSafety(N, Program, State, Safety) :-
 	getProgramSections(Program, Sections),
-	isSafe(N, Program, 0, State, [State], Sections, CheckedStates, Safety).
+	checkSafety(N, Program, 0, State, [State], Sections, _, Safety).
 	
-% isUnsafe(+N, +Program, +Pid,     +State, +CheckedStates, +Sections, +NewCheckedStates), jeśli stan State
+% checkSafety(+N, +Program, +Pid,     +State, +CheckedStates, +Sections, +NewCheckedStates), jeśli stan State
 % programu Program dla N procesów nie jest bezpieczny, lista CheckedState jest
 % listą odwiedzonych stanów (a jej pierwszy element to stan State),
 % a Sections jest listą numerów instrukcji 'sekcja' w programie.
-isSafe(N, _, N, _, CheckedStates, _, CheckedStates, safe) :- !.
+checkSafety(N, _, N, _, CheckedStates, _, CheckedStates, safe) :- !.
 
 
-isSafe(N, Program, Pid, State, ChkStates, Sections, NewChkStates, Safety) :-
+checkSafety(N, Program, Pid, State, ChkStates, Sections, NewChkStates, Safety) :-
 	Pid < N,
 	State = state(_, _, CVals),
-	(twoInSection(Sections, CVals)
-	-> Safety = unsafe
+	(twoInSection(Sections, CVals, InSec)
+	-> Safety = unsafe(InSec, []),
+		NewChkStates = ChkStates
 	;	NextPid is Pid+1,
 
 		step(Program, State, Pid, NextState),			% wybierz następny stan
 		(memberchk(NextState, ChkStates)
 		% jeśli był odwiedzony, przejrzyj następnych sąsiadów)
-		-> isSafe(N, Program, NextPid, State, ChkStates, Sections, NewChkStates, Safety)
+		-> checkSafety(N, Program, NextPid, State, ChkStates, Sections, NewChkStates, Safety)
 		% jesli nie
 		% sprawdź bezpiecześntwo w nowym stanie, po dodaniu go do listy odwiedzonych:
-		; isSafe(N, Program, 0, NextState, [NextState | ChkStates], Sections, SubtreeChkStates, SubtreeSafety),
+		; checkSafety(N, Program, 0, NextState, [NextState | ChkStates], Sections, SubtreeChkStates, SubtreeSafety),
 		% po przejrzeniu stanów potomnych, wywołaj się dla bieżącego stanu, ale następnego procesu.
+
 			(SubtreeSafety = safe
-			-> isSafe(N, Program, NextPid, State, SubtreeChkStates, Sections, NewChkStates, Safety)
-			; Safety = unsafe)
+			-> checkSafety(N, Program, NextPid, State, SubtreeChkStates, Sections, NewChkStates, Safety)
+			; SubtreeSafety = unsafe(InSec, PidList),
+				memberchk(Pid-C, CVals),
+				Safety = unsafe(InSec, [Pid-C | PidList]),
+				NewChkStates = SubtreeChkStates)
 		)
 	).
 
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Wczytanie programu %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Interakcja %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+verify(N, _) :-
+	N < 1,
+	!,
+	format('Error: parametr ~p powinien być liczbą dodatnią.~n', [N]).
+verify(N, ProgramFile) :-
+	N >= 1,
+	(readProgram(ProgramFile, Program)	% wczytaj program z pliku
+	-> initState(N, Program, InitState),
+		checkSafety(N, Program, InitState, Safety),
+		printResult(Safety)
+	;	format('Error: niepoprawna nazwa pliku - ~p.~n', [ProgramFile])).
+
+
 readProgram(ProgramFile, program(Vars, Arrays, Instrs)) :-
 	set_prolog_flag(fileerrors, off),
 	see(ProgramFile),
@@ -281,9 +292,20 @@ readProgram(ProgramFile, program(Vars, Arrays, Instrs)) :-
 	seen.
 
 
-printResult(Safety) :-
-	(Safety = safe
-	-> format('Program jest poprawny (bezpieczny), ~p.~n', [Safety])
-	;	format('Program jest niepoprawny, ~p.~n', [Safety])).
+printResult(safe) :-
+	!,
+	format('Program jest poprawny (bezpieczny).~n').
 
+printResult(unsafe(InSec, InstrList)) :-
+	length(InstrList, VisitedCnt),
+	StateCnt is VisitedCnt + 1,
+	format('Program jest niepoprawny: stan nr ~d nie jest bezpieczny.~n', [StateCnt]),
+	printProcesses(InstrList),
+	format('Procesy w sekcji: ~p, ~p ~n', InSec).
 
+printProcesses([]) :- !.
+printProcesses([Pid-C | InstrList]) :-
+	format('Proces ~d: ~d~n', [Pid, C]),
+	printProcesses(InstrList).
+	
+	
